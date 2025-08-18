@@ -20,7 +20,7 @@ import optuna
 # --- Parse Configuration String ---
 # Expected format: <validation><landuse><version> e.g. "Kt0726", "wf2031"
 
-config_input = "KT0812"
+config_input = "KT0814"
 
 # --- Run sweep for the entire nation ---
 n_trials_for_national_study = 50 # Number of trials for the national study
@@ -62,6 +62,8 @@ version_suffix = f"{VERSION_STAMP}"
 # --- Logging ---
 print(f"Using validation strategy: {validation_strategy} in version {VERSION_STAMP}")
 print(f"Land Use Features Included: {USE_LANDUSE_FEATURES}")
+study_name = f"xgblogR-nation-{validation_strategy}-{landuse_suffix}-{VERSION_STAMP}"
+print(f"Name of study: {study_name}")
 
 # Define project root based on notebook location (assuming this part is correct for your setup)
 def find_project_root(current: Path, marker: str = ".git"):
@@ -81,7 +83,7 @@ MODELS_DIR = PROJECT_ROOT / "models"
 TABLES_DIR = REPORTS_DIR / "tables"
 
 # Load the data once outside the train function for efficiency
-df = pd.read_csv(PROCESSED_DIR / "monthly_dengue_env_id_updated.csv")
+df = pd.read_csv(PROCESSED_DIR / "INDONESIA" / "monthly_dengue_env_id_updated.csv")
 
 # --- REGION REASSIGNMENT (Keep this for consistency) ---
 df['Region_Group'] = df['Region'].replace({'Maluku Islands': 'Maluku-Papua', 'Papua': 'Maluku-Papua'})
@@ -163,103 +165,83 @@ if validation_strategy == 'kfold':
     n_splits = 5
     # KFold works with pandas indices
     kf = KFold(n_splits=n_splits, shuffle=True, random_state=64)
+    # The indices from kf.split are relative to the df_train_val_national dataframe
     for train_index, test_index in kf.split(df_train_val_national):
         # Store the indices as cupy arrays
         splits.append((cp.array(train_index), cp.array(test_index)))
 
-elif validation_strategy == 'walk':
-    initial_train_months = 60
-    test_window = 6
-    unique_time_periods = df_train_val_national['YearMonth'].unique()
-    n_time_periods = len(unique_time_periods)
-    n_walks = (n_time_periods - initial_train_months) // test_window
-
-    for i in range(n_walks):
-        train_end_period_idx = initial_train_months + i * test_window
-        test_start_period_idx = train_end_period_idx
-        test_end_period_idx = test_start_period_idx + test_window
-
-        if test_end_period_idx > n_time_periods:
-            break
-
-        train_end_time = unique_time_periods[train_end_period_idx - 1]
-        test_start_time = unique_time_periods[test_start_period_idx]
-        test_end_time = unique_time_periods[test_end_period_idx - 1]
-
-        # Get pandas indices for the time periods
-        train_indices_pd = df_train_val_national.loc[df_train_val_national['YearMonth'] <= train_end_time].index
-        test_indices_pd = df_train_val_national.loc[
-            (df_train_val_national['YearMonth'] >= test_start_time) & (df_train_val_national['YearMonth'] <= test_end_time)
-        ].index
-        
-        # Convert indices to cupy arrays
-        splits.append((cp.array(train_indices_pd.to_numpy()), cp.array(test_indices_pd.to_numpy())))
-
 print(f"Pre-calculated {len(splits)} splits for {validation_strategy} validation.")
 
-# --- Optuna Objective Function ---
 def objective(trial, X_gpu, y_gpu, splits):
     """
     Objective function for Optuna to minimize.
-    It performs cross-validation or walk-forward validation and returns the
-    overall RMSE.
+    It performs cross-validation and returns the overall RMSE.
     """
     # --- Suggest Hyperparameters to Optuna ---
-    hyperparameters = {
-        'n_estimators': trial.suggest_int('n_estimators', 50, 7000),
+    params = {
+        'objective': 'reg:squarederror',
+        'tree_method': 'hist',
+        'device': 'cuda',
+        'random_state': 64,
+        'n_jobs': -1,
         'learning_rate': trial.suggest_float('learning_rate', 1e-6, 0.1, log=True),
         'max_depth': trial.suggest_int('max_depth', 2, 5),
         'subsample': trial.suggest_float('subsample', 0.1, 0.5),
-        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 0.5), 
-        'min_child_weight': trial.suggest_int('min_child_weight', 1, 50),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 0.5),
+        'min_child_weight': trial.suggest_int('min_child_weight', 10, 50),
         'gamma': trial.suggest_float('gamma', 0.1, 10, log=True),
         'reg_alpha': trial.suggest_float('reg_alpha', 0.1, 10, log=True),
         'reg_lambda': trial.suggest_float('reg_lambda', 1, 100, log=True),
     }
+    num_boost_round = trial.suggest_int('n_estimators', 50, 7000)
 
     all_preds = []
     all_true = []
-    
-    # Iterate through the pre-calculated cupy index arrays
+
     for train_index_gpu, test_index_gpu in splits:
-        X_train_fold_gpu = X_gpu.loc[train_index_gpu]
-        y_train_fold_gpu = y_gpu.loc[train_index_gpu]
-        X_test_fold_gpu = X_gpu.loc[test_index_gpu]
-        y_test_fold_gpu = y_gpu.loc[test_index_gpu]
+        # These indices are already relative to X_gpu and y_gpu
+        X_train_fold_gpu = X_gpu.iloc[train_index_gpu]
+        y_train_fold_gpu = y_gpu.iloc[train_index_gpu]
+        X_test_fold_gpu = X_gpu.iloc[test_index_gpu]
+        y_test_fold_gpu = y_gpu.iloc[test_index_gpu]
 
         if X_train_fold_gpu.empty or X_test_fold_gpu.empty:
             continue
 
-        model = xgboost.XGBRegressor(
-            objective='reg:squarederror', tree_method="hist", device="cuda",
-            random_state=64, n_jobs=-1, **hyperparameters
+        # Prepare DMatrices
+        dtrain = xgboost.DMatrix(X_train_fold_gpu, label=y_train_fold_gpu)
+        dtest = xgboost.DMatrix(X_test_fold_gpu, label=y_test_fold_gpu)
+
+        # Train using xgboost.train
+        booster = xgboost.train(
+            params=params,
+            dtrain=dtrain,
+            num_boost_round=num_boost_round,
+            evals=[(dtest, 'test')],
+            verbose_eval=False
         )
 
-        # Use DMatrix for the evaluation set to keep data on the GPU
-        dtrain = xgboost.DMatrix(X_train_fold_gpu, y_train_fold_gpu)
-        dtest = xgboost.DMatrix(X_test_fold_gpu, y_test_fold_gpu)
-
-        model.fit(dtrain, eval_set=[(dtest, 'test')], verbose=False)
-
-        predictions_gpu = model.predict(dtest)
-        
-        all_preds.append(predictions_gpu.get())
+        # Predict
+        predictions_gpu = booster.predict(dtest)
+        all_preds.append(predictions_gpu)
         all_true.append(y_test_fold_gpu.to_numpy().flatten())
-        
+
     if all_true:
-        global_overall_rmse = np.sqrt(mean_squared_error(np.concatenate(all_true), np.concatenate(all_preds)))
+        global_overall_rmse = np.sqrt(mean_squared_error(
+            np.concatenate(all_true),
+            np.concatenate(all_preds)
+        ))
         print(f"Trial finished with RMSE: {global_overall_rmse:.2f}")
         return global_overall_rmse
     else:
         return float('inf')
-
 
 if df_train_val_national.empty:
     print(f"No training/validation data for national study. Cannot proceed.")
 else:
     # --- Optuna Study Setup (offline-friendly) ---
     # The storage argument saves the study to a local SQLite database
-    study_name = f"-xgbR-nation-{validation_strategy}-{landuse_suffix}-{VERSION_STAMP}"
+    study_name = f"xgblogR-nation-{validation_strategy}-{landuse_suffix}-{VERSION_STAMP}"
     study = optuna.create_study(
         study_name=study_name,
         direction='minimize',
@@ -313,14 +295,20 @@ print("\n--- NATIONAL Study and Hyperparameter Retrieval Completed ---")
 
 # --- Test with Final Model (This section remains largely the same) ---
 print("\n--- Begin Final Model Training and Evaluation ---")
+import pandas as pd
+import cudf
+import xgboost
+import shap
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from matplotlib.backends.backend_pdf import PdfPages
 
-# Read hyperparameters for the national model
+# --- Read hyperparameters ---
 best_hypers_csv_path = TABLES_DIR / f"{study_name}_params.csv"
 hyperparams_df = pd.read_csv(best_hypers_csv_path)
 print(f"Extracted hyperparameters for national model: {best_hypers_csv_path}")
 
-# Extract hyperparameters for the national model
-params = hyperparams_df.iloc[0]  # Assuming the first row contains national hyperparameters
+params = hyperparams_df.iloc[0]
 national_hyperparams = {
     'gamma': params['gamma'],
     'n_estimators': int(params['n_estimators']),
@@ -332,14 +320,9 @@ national_hyperparams = {
     'colsample_bytree': params['colsample_bytree'],
     'min_child_weight': int(params['min_child_weight'])
 }
+num_round = int(params['n_estimators'])
 
-# Convert pand
-
-all_shap_plots = []
-all_pdp_plots = []  
-national_summary_data = {}
-
-# Convert pandas DataFrames to cuDF DataFrames for GPU acceleration
+# --- Prepare data ---
 X_train = cudf.DataFrame(df_train_val_national[actual_feature_columns])
 y_train = cudf.DataFrame(df_train_val_national[[target]])
 X_test = cudf.DataFrame(df_test_national[actual_feature_columns])
@@ -347,109 +330,67 @@ y_test = cudf.DataFrame(df_test_national[[target]])
 X_full = cudf.DataFrame(df[actual_feature_columns])
 y_full = cudf.DataFrame(df[[target]])
 
-# Select a subset of X_train for SHAP background sampling
-background_sample = df_train_val_national[actual_feature_columns].sample(n=100, random_state=42)
+print(f"Shape of X_train (cudf): {X_train.shape}")
+print(f"Shape of y_train (cudf): {y_train.shape}")
+print(f"Shape of X_test (cudf): {X_test.shape}")
+print(f"Shape of y_test (cudf): {y_test.shape}")
+print(f"Shape of X_full (cudf): {X_full.shape}")
+print(f"Shape of y_full (cudf): {y_full.shape}")
 
-# Initialize and train the XGBoost Regressor model
-model = xgboost.XGBRegressor(
-    objective='reg:squarederror', # Objective for regression tasks
-    tree_method='hist',           # Use histogram-based tree method for faster training
-    device='cuda',                # Specify GPU device for training
-    random_state=64,              # For reproducibility
-    **national_hyperparams        # Unpack national hyperparameters
-)
-model.fit(X_train, y_train)
+# Display copies for SHAP plotting
+X_train_display = df_train_val_national[actual_feature_columns].copy()
+X_test_display = df_test_national[actual_feature_columns].copy()
 
-# Initialize dictionary to store metrics for the national model
-current_national_metrics = {}
+Dtrain = xgboost.DMatrix(X_train, label=y_train)
+Dtest = xgboost.DMatrix(X_test, label=y_test)
+Dfull = xgboost.DMatrix(X_full, label=y_full)
 
-for label, X_subset, y_subset in [
-    ("Train/Val", X_train, y_train),
-    ("Test", X_test, y_test),
-    ("Full", X_full, y_full)
-]:
-    preds = model.predict(X_subset)
-    preds = np.maximum(0, cp.asnumpy(preds))  # CuPy -> NumPy
-    y_true = y_subset.to_numpy().flatten()
+# --- Train model ---
+model = xgboost.train(national_hyperparams, Dtrain, num_boost_round=num_round)
+model.set_param({"device": "cuda"})
 
-    rmse = np.sqrt(mean_squared_error(y_true, preds))
-    mae = mean_absolute_error(y_true, preds)
-    r2 = r2_score(y_true, preds)
+# --- Predict and compute performance metrics ---
+y_pred = model.predict(Dtest)
+rmse = np.sqrt(mean_squared_error(y_test.to_pandas(), y_pred))
+mae = mean_absolute_error(y_test.to_pandas(), y_pred)
+r2 = r2_score(y_test.to_pandas(), y_pred)
 
-    current_national_metrics[f'{label} RMSE'] = rmse
-    current_national_metrics[f'{label} MAE'] = mae
-    current_national_metrics[f'{label} R2'] = r2
+national_summary_data = {
+    "RMSE": rmse,
+    "MAE": mae,
+    "R2": r2
+}
 
-    # Prepare values for SHAP tree explainer -> 
-    # takes strictly numpy arrays or pandas DataFrames
-    X_pd = X_subset.to_pandas()
-    explainer = shap.TreeExplainer(model, data=background_sample, feature_perturbation="auto")
-    shap_vals = explainer.shap_values(X_pd.values)
-    shap_vals_np = cp.asnumpy(shap_vals)   # For plotting
+## Match format of training
+X_test_pd = X_test.to_pandas()
+X_train_pd = X_train.to_pandas()
+background_data = X_train_pd.sample(100, random_state=42)
+# --- Information to print for debugging ---
+print("--- SHAP Debugging Information ---")
+print("Columns in X_train (cudf):", X_train.columns.tolist())
+print("Columns in X_test_pd (pandas):", X_test_pd.columns.tolist())
+# --- Generate SHAP plots and save to one PDF ---
+explainer = shap.explainers.GPUTree(model, background_data, feature_perturbation='interventional')
+shap_values = explainer(X_test_pd, check_additivity=False)
 
-    all_shap_plots.append((shap_vals_np, X_pd, f"National - {label}", rmse, mae, r2))
-
-    if label == "Test":
-        mean_abs_shap = np.abs(shap_vals_np).mean(axis=0)
-        feature_importance = pd.Series(mean_abs_shap, index=X_pd.columns)
-        top_5_features = feature_importance.nlargest(5).index.tolist()
-        print(f"Top 5 predictors for National (Test Set): {top_5_features}")
-
-        for feature in top_5_features:
-            all_pdp_plots.append((model, X_pd, feature, "National"))
-
-# Store all calculated metrics and Log Incidence Rate statistics for the national model
-national_summary_data['National'] = current_national_metrics
-national_summary_data['National']['Log_IR Min'] = df[target].min()
-national_summary_data['National']['Log_IR Max'] = df[target].max()
-national_summary_data['National']['Log_IR 25th Quantile'] = df[target].quantile(0.25)
-national_summary_data['National']['Log_IR 50th Quantile'] = df[target].quantile(0.50)
-national_summary_data['National']['Log_IR 75th Quantile'] = df[target].quantile(0.75)
-
-# Generate SHAP plots and save them to a PDF file
-pdf_output_filename = f"xgb_national_{validation_strategy}_plots_{landuse_suffix}_{version_digits}.pdf"
-pdf_path = FIGURES_DIR / pdf_output_filename
-
+pdf_path = TABLES_DIR / f"{study_name}_shap_plots.pdf"
 with PdfPages(pdf_path) as pdf:
-    # SHAP summary plots
-    for shap_vals, X_pd, title, rmse, mae, r2 in all_shap_plots:
-        fig, ax = plt.subplots(figsize=(10, 8 + len(actual_feature_columns) * 0.25))
-        plt.sca(ax)
-        shap.summary_plot(shap_vals, X_pd, show=False)
-        ax.set_title(f"{title} | RMSE: {rmse:.2f}, MAE: {mae:.2f}, R2: {r2:.2f}")
-        pdf.savefig(fig, bbox_inches='tight')
-        plt.close(fig)
-    # PDP plots using sklearn
-    for model, X_pd, feature, title in all_pdp_plots:
-        try:
-            fig, ax = plt.subplots(figsize=(8, 6))
-            display = PartialDependenceDisplay.from_estimator(
-                model,
-                X_pd,
-                [feature],
-                ax=ax,
-                kind='average',
-                grid_resolution=100
-            )
-            ax.set_title(f'{title} - Sklearn PDP - {feature}')
-            pdf.savefig(fig, bbox_inches='tight')
-            plt.close(fig)
-        except Exception as e:
-            print(f"Failed sklearn PDP for {title} - {feature}: {e}")
+    # Beeswarm plot
+    shap.plots.beeswarm(shap_values, show=False)
+    pdf.savefig(bbox_inches="tight")
+    plt.close()
 
+    # Dependence plots for each feature
+    for name in X_train.columns:
+        shap.dependence_plot(name, shap_values.values, X_test_display, show=False)
+        pdf.savefig(bbox_inches="tight")
+        plt.close()
 
-print(f"National SHAP and PDP plots saved to '{pdf_path}'")
+print(f"National SHAP plots saved to '{pdf_path}'")
 
-# --- Generate National Summary Table ---
-print("\n--- National Summary Table ---")
-
-# Convert the collected summary data into a pandas DataFrame
-summary_df = pd.DataFrame.from_dict(national_summary_data, orient='index').T
-
-# Save the DataFrame to a CSV file
-csv_output_filename = f"xgb_national_{validation_strategy}_test_{landuse_suffix}_{version_digits}.csv"
-csv_filename = TABLES_DIR / csv_output_filename
-summary_df.to_csv(csv_filename, index=True, float_format="%.2f")
-
+# --- Save summary table ---
+summary_df = pd.DataFrame([national_summary_data])
+csv_filename = TABLES_DIR / f"{study_name}_results.csv"
+summary_df.to_csv(csv_filename, index=False, float_format="%.4f")
 print(f"National summary table saved to '{csv_filename}'")
 print("-" * 50)
