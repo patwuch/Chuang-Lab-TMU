@@ -1,0 +1,167 @@
+import os, glob
+import pandas as pd
+import xarray as xr
+import numpy as np
+
+configfile: "config.yaml"
+
+GWL_DIR = config["raw_gwl_dir"]
+AR6_DIR = config["raw_ar6_dir"]
+TREAD_DIR = config["raw_tread_dir"]
+OUT_DIR = config["NetCDF_dir"]
+ar6_variables = config["variables"]
+tread_variables = config["tread_variables"]
+gwls = config["gwls"]
+ssp_scenarios = config["ssp_scenarios"]
+branches = config["branches"]
+
+
+# ----------------------------------------
+# Rule all: across three branches
+# ----------------------------------------
+rule all:
+    input:
+        expand(OUT_DIR + "/{branch}_all.nc", branch=branches)
+
+# ----------------------------------------
+# Branch: GWL
+# ----------------------------------------
+rule merge_gwl_csvs:
+    input:
+        lambda wildcards: glob.glob(f"{GWL_DIR}/{wildcards.var}/{wildcards.gwl}/*.csv")
+    output:
+        OUT_DIR + "/{var}/{gwl}.nc"
+    run:
+        all_da = []
+
+        for f in input:
+            try:
+                df = pd.read_csv(f)
+            except Exception as e:
+                raise ValueError(f"Failed to read CSV {f}: {e}")
+
+            if df.empty:
+                raise ValueError(f"CSV file {f} is empty!")
+
+            # Check for duplicate columns
+            dup_cols = df.columns[df.columns.duplicated()]
+            if len(dup_cols) > 0:
+                raise ValueError(f"Duplicate columns in CSV {f}: {list(dup_cols)}")
+
+            # Extract time columns
+            # Only keep columns that are either LON, LAT, or look like dates (YYYYMMDD)
+            time_cols = [c for c in df.columns if c not in ["LON", "LAT"] and c.isdigit()]
+
+            try:
+                times = pd.to_datetime(time_cols, format="%Y%m%d", errors='coerce')
+            except Exception as e:
+                raise ValueError(f"Error parsing dates in {f}: {e}")
+
+            
+            # Check for duplicate time columns
+            if len(time_cols) != len(set(time_cols)):
+                raise ValueError(f"Duplicate time columns detected in {f}: {time_cols}")
+            
+            
+
+            # Ensure lon/lat are sorted for consistent indexing
+            lon = np.sort(np.unique(df["LON"]))
+            lat = np.sort(np.unique(df["LAT"]))
+            nlon, nlat = len(lon), len(lat)
+
+            # Preallocate array
+            data = np.empty((len(times), nlat, nlon))
+            data[:] = np.nan  # initialize with NaNs
+
+            for i, tcol in enumerate(time_cols):
+                # Pivot and reindex to guarantee consistent shape
+                grid = df.pivot_table(values=tcol, index="LAT", columns="LON")
+                grid = grid.reindex(index=lat, columns=lon)  # missing values become NaN
+                data[i, :, :] = grid.values
+
+            # Parse SSP, model, year from filename
+            fname = os.path.basename(f)
+            parts = fname.split("_")
+            ssp = next((p for p in parts if p.startswith("ssp")), "unknown")
+            try:
+                model = parts[parts.index(ssp)+1]
+            except:
+                model = "unknown"
+
+            da = xr.DataArray(
+                data,
+                dims=("time", "lat", "lon"),
+                coords={"time": times, "lat": lat, "lon": lon},
+                name=wildcards.var,
+                attrs={
+                    "ssp": ssp,
+                    "model": model,
+                    "gwl": wildcards.gwl,
+                    "year": parts[-1].split(".")[0]
+                }
+            )
+            all_da.append(da)
+
+        if len(all_da) == 0:
+            raise ValueError(f"No valid CSV data found for {wildcards.var}, {wildcards.gwl}")
+
+        # Concatenate along the time dimension and sort by time
+        ds = xr.concat(all_da, dim="time")
+        ds = ds.sortby("time")  # ensure chronological order
+        ds = ds.groupby("time").first()  # drop any duplicate times
+        os.makedirs(os.path.dirname(output[0]), exist_ok=True)
+        ds.to_netcdf(output[0])
+
+rule combine_gwl_netcdf:
+    input:
+        # explicitly list all input files for this variable
+        lambda wildcards: expand(
+            OUT_DIR + "/{var}/{gwl}.nc",
+            var=wildcards.var,
+            gwl=gwls
+        )
+    output:
+        OUT_DIR + "/combined_{var}.nc"
+    run:
+        ds_list = [xr.open_dataset(f) for f in input]
+        for i, f in enumerate(input):
+            gwl_val = os.path.basename(f).replace(".nc","")
+            for varname in ds_list[i].data_vars:
+                ds_list[i][varname] = ds_list[i][varname].expand_dims({"gwl":[gwl_val]})
+        combined_ds = xr.concat(ds_list, dim="gwl")
+        combined_ds.to_netcdf(output[0])
+
+rule make_gwl_all_netcdf:
+    input:
+        # All combined variable-level netcdfs
+        expand(OUT_DIR + "/combined_{var}.nc", var=ar6_variables)
+    output:
+        OUT_DIR + "/gwl_all.nc"
+    run:
+        # Open all combined variable datasets
+        ds_list = [xr.open_dataset(f) for f in input]
+
+        # Merge them along the variable dimension
+        merged_ds = xr.merge(ds_list)
+
+        # Save the final "all GWL" netcdf
+        merged_ds.to_netcdf(output[0])
+
+# ----------------------------------------
+# Branch: SSPS
+# ----------------------------------------
+
+rule make_ssp_all_netcdf:
+    input:
+        expand(OUT_DIR + "/{ssp}_all.nc", ssp=ssp_scenarios)
+    output:
+        OUT_DIR + "/ssp_all.nc"
+    run:
+        ds_list = [xr.open_dataset(f) for f in input]
+        merged_ds = xr.merge(ds_list)
+        merged_ds.to_netcdf(output[0])
+
+# ----------------------------------------
+# Branch: TREAD
+# ----------------------------------------
+

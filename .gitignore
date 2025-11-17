@@ -1,2 +1,4 @@
-*.csv
-
+# Ignore all work folders
+work/
+*.log
+*.tmp

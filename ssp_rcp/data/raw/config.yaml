@@ -1,0 +1,30 @@
+raw_gwl_dir: "GWL"
+raw_ar6_dir: "AR6"
+raw_tread_dir: "TREAD"
+NetCDF_dir: "NetCDF"
+branches:
+  - gwl
+  - ssp
+  - tread
+ar6_variables:
+  - prec
+  - temp_min
+  - temp_max
+  - temp_avg
+gwls:
+  - GWL1.5
+  - GWL2.0
+  - GWL3.0
+  - GWL4.0
+ssp_scenarios:
+  - ssp126
+  - ssp245
+  - ssp370
+  - ssp585
+tread_variables:
+  - wind_spd
+  - sun
+  - temp_min
+  - temp_max
+  - prec
+  - rel_humid
