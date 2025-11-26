@@ -1,0 +1,37 @@
+import os, glob, pandas as pd, xarray as xr, numpy as np
+
+configfile: "config.yaml"
+
+BASE = workflow.basedir                          # e.g. /home/.../chuang_lab_tmu/main/ssp_rcp
+PROJECT = os.path.abspath(os.path.join(BASE, "..", ".."))  # -> /home/.../chuang_lab_tmu
+WORK = os.path.join(PROJECT, "work")             # -> /home/.../chuang_lab_tmu/work
+
+def w(path):
+    return os.path.join(WORK, "data", "raw", path)
+
+GWL_RAW   = w(config["raw_gwl_dir"])         # work/<raw_gwl_dir>
+AR6_RAW   = w(config["raw_ar6_dir"])         # work/<raw_ar6_dir>
+TREAD_RAW = w(config["raw_tread_dir"])       # work/<raw_tread_dir>
+NETCDF_DIR  =  "/home/patwuch/projects/chuang_lab_tmu/work/ssp_rcp/data/interim/NetCDF"        # work/<NetCDF_dir>
+GWL_NETCDF = os.path.join(NETCDF_DIR, "GWL_NetCDF")
+AR6_NETCDF = os.path.join(NETCDF_DIR, "AR6_NetCDF")
+TREAD_NETCDF = os.path.join(NETCDF_DIR, "TREAD_NetCDF")
+
+ar6_variables = config["ar6_variables"]
+tread_variables = config["tread_variables"]
+gwls = config["gwls"]
+ssp_scenarios = config["ssp_scenarios"]
+branches = config["branches"]
+
+print("BASE   =", BASE)
+print("PROJECT=", PROJECT)
+print("WORK   =", WORK)
+print("GWL_DIR=", GWL_RAW)
+print("AR6_DIR=", AR6_RAW)
+print("TREAD_DIR=", TREAD_RAW)
+
+print("OUT_DIR=", NETCDF_DIR)
+
+include: "rules/ar6.smk"
+include: "rules/gwl.smk"
+# include: "rules/tread.smk"
