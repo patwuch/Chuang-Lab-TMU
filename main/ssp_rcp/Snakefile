@@ -2,6 +2,7 @@ from pathlib import Path
 import glob
 import pandas as pd
 import numpy as np
+from collections import defaultdict
 
 ######## RUN THIS TO CREATE DAG ########
 # snakemake --cores 4 --dag 2>/dev/null | grep -v "Including" | dot -Tpdf > dag.pdf
@@ -10,15 +11,15 @@ import numpy as np
 
 configfile: "config.yaml"
 
-ar6_variables = config["ar6_variables"]
-tread_variables = config["tread_variables"]
-gwls = config["gwls"]
+ar6_clim_factors = config["ar6_clim_factors"]
+tread_clim_factors = config["tread_clim_factors"]
+gwl_scenarios = config["gwl_scenarios"]
 ssp_scenarios = config["ssp_scenarios"]
 branches = config["branches"]
 
 
 PROJECT_MAIN_DIR = Path(workflow.basedir).resolve()  # Snakefile directory
-ROOT_DIR = PROJECT_MAIN_DIR.parents[1]              # go up 3 levels to chuang_lab_tmu
+ROOT_DIR = PROJECT_MAIN_DIR.parents[1]              # go up 1 levels to chuang_lab_tmu
 WORK_DIR = ROOT_DIR / "work"
 PROJECT_WORK_DIR = WORK_DIR / "ssp_rcp"
 
@@ -29,8 +30,9 @@ PROCESSED_DIR = DATA_DIR / "processed"
 
 GWL_RAW_DIR   = RAW_DIR / "GWL"
 AR6_RAW_DIR   = RAW_DIR / "AR6"
+AR6_INTERIM_DIR = INTERIM_DIR / "AR6"
 TREAD_RAW_DIR = RAW_DIR / "TREAD"
-NETCDF_DIR    = INTERIM_DIR / "NetCDF"
+NETCDF_DIR    = PROCESSED_DIR / "NetCDF"
 GWL_NETCDF_DIR = NETCDF_DIR / "GWL_NetCDF"
 AR6_NETCDF_DIR = NETCDF_DIR / "AR6_NetCDF"
 TREAD_NETCDF_DIR = NETCDF_DIR / "TREAD_NetCDF"
@@ -44,6 +46,7 @@ dirs_to_create = [
     DATA_DIR,
     RAW_DIR,
     INTERIM_DIR,
+    AR6_INTERIM_DIR,
     PROCESSED_DIR,
     GWL_RAW_DIR,
     AR6_RAW_DIR,
@@ -55,56 +58,75 @@ dirs_to_create = [
     FIGURES_DIR
 ]
 
-dirs_to_create = [
-    WORK_DIR,
-    PROJECT_WORK_DIR,
-    DATA_DIR,
-    RAW_DIR,
-    INTERIM_DIR,
-    PROCESSED_DIR,
-    GWL_RAW_DIR,
-    AR6_RAW_DIR,
-    TREAD_RAW_DIR,
-    NETCDF_DIR,
-    GWL_NETCDF_DIR,
-    AR6_NETCDF_DIR,
-    TREAD_NETCDF_DIR,
-    FIGURES_DIR
-]
+for directory in dirs_to_create:
+    directory.mkdir(parents=True, exist_ok=True)
 
-rule make_dirs:
-    # Output can just be the top-level dir
-    output:
-        PROJECT_WORK_DIR = directory(PROJECT_WORK_DIR)
-    run:
-        for directory in dirs_to_create:
-            abs_path = Path(directory).resolve()
-            if not abs_path.exists():
-                print(f"Creating directory: {abs_path}")
-                abs_path.mkdir(parents=True, exist_ok=True)
-            else:
-                print(f"Directory already exists: {abs_path}")
+ar6_csv_paths = glob.glob(str(AR6_RAW_DIR / "*" / "*" / "*.csv"))
+ar6_groups = defaultdict(list)
+
+for f in ar6_csv_paths:
+    f = Path(f)
+
+    factor = f.parts[-3]
+    ssp = f.parts[-2]
+
+    parts = f.stem.split("_")
+
+    # Always: second-to-last is model, last is year
+    model = parts[-2]
+    year = parts[-1]    # if you ever want it
+
+    out_nc = AR6_INTERIM_DIR / factor / ssp / f"{model}.nc"
+    ar6_groups[out_nc].append(f)
+
+ar6_interim_netcdf_list = list(ar6_groups.keys())
+print(ar6_interim_netcdf_list[:5])
+
+print(len(ar6_interim_netcdf_list))
+print(len(set(ar6_interim_netcdf_list)))
+
+
+
+# # Collect all CSVs for GWL
+# gwl_csv_paths = glob.glob(str(GWL_RAW_DIR / "*" / "*" / "*.csv"))
+# gwl_groups = defaultdict(list)
+
+# for f in gwl_csv_paths:
+#     f = Path(f)
+
+#     factor = f.parts[-3]
+#     ssp = f.parts[-2]
+
+#     parts = f.stem.split("_")
+
+#     # Second-to-last token is model, last token is year
+#     model = parts[-2]
+#     year = parts[-1]
+
+#     # Output NetCDF per model
+#     out_nc = GWL_RAW_DIR / factor / ssp / f"{model}.nc"
+#     gwl_groups[out_nc].append(f)
+
+# # Unique output NetCDFs (one per model)
+# gwl_target_netcdf_list = list(gwl_groups.keys())
+
+# print(gwl_target_netcdf_list[:5])
+
+
 
 for branch in branches:
     print(f"Including rules for branch: {branch}")
     include: f"rules/{branch}.smk"
 
-all_inputs = [
-    NETCDF_DIR / "ar6_all.nc",
-    NETCDF_DIR / "gwl_all.nc",
-    # NETCDF_DIR / "tread_all.nc"
-]
 
 
-# Keep only files that actually exist or will be created
-all_inputs = [str(f) for f in all_inputs]
 
+all_inputs = [f"{branch}_all.nc" for branch in branches]
 
 
 rule all:
     input:
-        all_inputs
-
+        str(NETCDF_DIR / "ar6_all.nc")
 
 
 

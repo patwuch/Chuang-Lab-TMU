@@ -1,0 +1,8 @@
+[PosixPath('/home/patwuch/Documents/projects/Chuang_Lab_TMU/work/ssp_rcp/data/raw/AR6/prec/ssp370/CMCC-ESM2.nc'), PosixPath('/home/patwuch/Documents/projects/Chuang_Lab_TMU/work/ssp_rcp/data/raw/AR6/prec/ssp370/BCC-CSM2-MR.nc'), PosixPath('/home/patwuch/Documents/projects/Chuang_Lab_TMU/work/ssp_rcp/data/raw/AR6/prec/ssp370/IITM-ESM.nc'), PosixPath('/home/patwuch/Documents/projects/Chuang_Lab_TMU/work/ssp_rcp/data/raw/AR6/prec/ssp370/GFDL-ESM4.nc'), PosixPath('/home/patwuch/Documents/projects/Chuang_Lab_TMU/work/ssp_rcp/data/raw/AR6/prec/ssp370/CanESM5.nc')]
+Including rules for branch: ar6
+digraph snakemake_dag {
+    graph[bgcolor=white, margin=0];
+    node[shape=box, style=rounded, fontname=sans,                 fontsize=10, penwidth=2];
+    edge[penwidth=2, color=grey];
+	0[label = "make_dirs", color = "0.53 0.6 0.85", style="rounded,dashed"];
+}            

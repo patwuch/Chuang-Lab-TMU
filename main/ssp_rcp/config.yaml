@@ -1,13 +1,13 @@
 branches:
-  - gwl
+  # - gwl
   - ar6
   # - tread
-ar6_variables:
+ar6_clim_factors:
   - prec
   - temp_min
   - temp_max
   - temp_avg
-gwls:
+gwl_scenarios:
   - GWL1.5
   - GWL2.0
   - GWL3.0
@@ -18,7 +18,7 @@ ssp_scenarios:
   - ssp245
   - ssp370
   - ssp585
-tread_variables:
+tread_clim_factors:
   - wind_spd
   - sun
   - temp_min
