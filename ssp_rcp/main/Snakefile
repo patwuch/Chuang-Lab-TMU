@@ -1,0 +1,75 @@
+from pathlib import Path
+import glob
+import pandas as pd
+import numpy as np
+from collections import defaultdict
+
+######## RUN THIS TO CREATE DAG ########
+# snakemake --cores 4 --dag 2>/dev/null | grep -v "Including" | dot -Tpdf > dag.pdf
+########################################
+
+
+configfile: "config.yaml"
+
+ar6_clim_factors = ['prec','temp_min','temp_max','temp_avg']
+gwl_scenarios = ['GWL1.5','GWL2.0','GWL3.0','GWL4.0']
+ssp_scenarios = ['historical','ssp126','ssp245','ssp370','ssp585']
+branches = config["branches"]
+
+# Locate all WORK directories 
+SSPRCP_MAIN_DIR = Path(workflow.basedir).resolve()  # Snakefile directory
+ROOT_DIR = SSPRCP_MAIN_DIR.parents[1]              # go up 1 levels to chuang_lab_tmu
+SCRIPTS_DIR = SSPRCP_MAIN_DIR / "scripts"
+
+# Locate data directories
+WORK_DIR = ROOT_DIR / "work"
+SSPRCP_WORK_DIR = WORK_DIR / "ssp_rcp"
+DATA_DIR = SSPRCP_WORK_DIR / "data"
+RAW_DIR = DATA_DIR / "raw"
+INTERIM_DIR = DATA_DIR / "interim"
+PROCESSED_DIR = DATA_DIR / "processed"
+
+GWL_RAW_DIR   = RAW_DIR / "GWL"
+AR6_RAW_DIR   = RAW_DIR / "AR6"
+AR6_INTERIM_DIR = INTERIM_DIR / "AR6"
+TREAD_RAW_DIR = RAW_DIR / "TREAD"
+NETCDF_DIR    = PROCESSED_DIR / "NetCDF"
+GWL_NETCDF_DIR = NETCDF_DIR / "GWL_NetCDF"
+AR6_NETCDF_DIR = NETCDF_DIR / "AR6_NetCDF"
+TREAD_NETCDF_DIR = NETCDF_DIR / "TREAD_NetCDF"
+
+FIGURES_DIR = SSPRCP_WORK_DIR / "figures"
+
+# List of all directories you want to create
+dirs_to_create = [
+    WORK_DIR,
+    SSPRCP_WORK_DIR,
+    DATA_DIR,
+    RAW_DIR,
+    INTERIM_DIR,
+    AR6_INTERIM_DIR,
+    PROCESSED_DIR,
+    GWL_RAW_DIR,
+    AR6_RAW_DIR,
+    TREAD_RAW_DIR,
+    NETCDF_DIR,
+    GWL_NETCDF_DIR,
+    AR6_NETCDF_DIR,
+    TREAD_NETCDF_DIR,
+    FIGURES_DIR
+]
+
+for directory in dirs_to_create:
+    directory.mkdir(parents=True, exist_ok=True)
+
+
+
+for branch in branches:
+    print(f"Including rules for branch: {branch}")
+    include: f"rules/{branch}.smk"
+
+rule all:
+    input:
+        expand(str(NETCDF_DIR) + "/{branch}_NetCDF/{branch}_all.nc", branch=branches),
+        expand(str(NETCDF_DIR) + "/{branch}_NetCDF/{branch}_sliced.nc", branch=branches),
+        expand(str(NETCDF_DIR) + "/{branch}_NetCDF/{branch}_sliced.tsv", branch=branches)

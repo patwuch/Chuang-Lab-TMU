@@ -1,0 +1,13 @@
+branches:
+  - GWL
+  # - ar6
+  # - tread
+
+# Slicing date range
+start_date: 2018-01-01
+end_date: 2025-12-31
+
+# Slicing configuration:
+spatial_resolution: "pinpoint"  # "1deg"
+temporal_resolution: "daily" 
+exclude_models:

@@ -1,8 +1,11 @@
 # Ignore all work folders
-work/
+
 *.log
 *.tmp
 *.csv
 *.sav
 *.nc
-main/ssp_rcp/.snakemake/
+ssp_rcp/work
+zonaL_statistics/work
+promedscrape/work
+gee_dengue_ml/work

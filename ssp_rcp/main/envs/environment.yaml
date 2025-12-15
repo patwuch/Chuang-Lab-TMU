@@ -1,0 +1,85 @@
+name: environment
+channels:
+  - rapidsai
+  - nvidia/label/cuda-12.1.0
+  - pytorch
+  - conda-forge
+  - defaults
+  - bioconda
+
+dependencies:
+  - python=3.11
+
+  # Scientific stack
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - xarray
+  - netcdf4
+
+  # Geospatial
+  - geopandas
+  - pyproj
+  - shapely
+  - folium
+  - bokeh
+
+  # RAPIDS (CUDA 12.1 compatible)
+  - cudf=24.08
+  - cuml=24.08
+  - dask-cuda=24.08
+  - dask-cudf=24.08
+  - rapids-dask-dependency=24.08
+
+  # Distributed
+  - dask
+  - distributed
+
+  # Jupyter
+  - ipython
+  - jupyterlab_widgets
+  - ipywidgets
+
+  # PyTorch CUDA 12.1
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+
+  # ML/Optimization
+  - optuna
+  - pyarrow
+  - py-xgboost
+  - treelite
+  - wandb
+
+  # Web & DB
+  - fastapi
+  - uvicorn
+  - pydantic
+  - sqlalchemy
+  - sqlalchemy-utils
+  - psycopg
+  - python-dotenv
+
+  # Misc
+  - requests
+  - tqdm
+  - jinja2
+  - pyyaml
+  - cryptography
+  - cffi
+  - pillow
+  - lxml
+  - google-api-python-client
+  - boto3
+
+  # Azure C++ libs
+  - azure-core-cpp
+  - azure-identity-cpp
+  - azure-storage-blobs-cpp
+  - azure-storage-common-cpp
+  - azure-storage-files-datalake-cpp
