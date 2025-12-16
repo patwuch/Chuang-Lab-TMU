@@ -3,10 +3,23 @@ import numpy as np
 import xarray as xr
 from pathlib import Path
 
+print("Wildcards:", snakemake.wildcards)
+
+input_dir = Path(snakemake.input[0])
+print("Input directory:", input_dir)
+
+csv_files = sorted(input_dir.glob("*.csv"))
+print("CSV files found:", csv_files)
+
+if not csv_files:
+    raise ValueError(f"No CSV files found in {input_dir}")
+
 all_da = []
 
-for f in input:
+for f in csv_files:
+    print("Reading:", f)
     df = pd.read_csv(f)
+
     if df.empty:
         raise ValueError(f"Empty CSV: {f}")
 
@@ -26,7 +39,7 @@ for f in input:
         grid = grid.reindex(index=lat, columns=lon)
         data[i] = grid.values
 
-    parts = f.name.split("_")
+    parts = Path(f).name.split("_")
     ssp = next((p for p in parts if p.startswith("ssp")), "unknown")
     model = parts[parts.index(ssp) + 1] if ssp in parts else "unknown"
     year = parts[-1].split(".")[0]
@@ -35,16 +48,17 @@ for f in input:
         data,
         dims=("time", "lat", "lon"),
         coords={"time": times, "lat": lat, "lon": lon},
-        name=wildcards.clim_factor,
+        name=snakemake.wildcards.clim_factor,
         attrs={
             "ssp": ssp,
             "model": model,
-            "gwl": wildcards.gwl,
+            "gwl": snakemake.wildcards.gwl,
             "year": year,
         },
     )
+
     all_da.append(da)
 
 ds = xr.concat(all_da, dim="time").sortby("time").groupby("time").first()
-output[0].parent.mkdir(parents=True, exist_ok=True)
-ds.to_netcdf(output[0])
+Path(snakemake.output[0]).parent.mkdir(parents=True, exist_ok=True)
+ds.to_netcdf(snakemake.output[0])

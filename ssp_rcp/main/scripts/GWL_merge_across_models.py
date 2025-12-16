@@ -1,19 +1,14 @@
-import pandas as pd
-import numpy as np
+# Access Snakemake variables
+snakemake_input_files = snakemake.input
+snakemake_output_file = snakemake.output[0]
+
+print("Input files:", snakemake_input_files)
+
 import xarray as xr
-from pathlib import Path
 
-
-
-ds_list = []
-
-for f in input:
-    ds = xr.open_dataset(f)
-    gwl_val = Path(f).stem
-    for var in ds:
-        ds[var] = ds[var].expand_dims({"gwl": [gwl_val]})
-    ds_list.append(ds)
+ds_list = [xr.open_dataset(f) for f in snakemake_input_files]
+if not ds_list:
+    raise ValueError("No NetCDF files found to concatenate! Check previous rules and paths.")
 
 combined = xr.concat(ds_list, dim="gwl")
-output[0].parent.mkdir(parents=True, exist_ok=True)
-combined.to_netcdf(output[0])
+combined.to_netcdf(snakemake_output_file)

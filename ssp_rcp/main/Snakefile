@@ -3,6 +3,8 @@ import glob
 import pandas as pd
 import numpy as np
 from collections import defaultdict
+from snakemake.io import directory
+import os
 
 ######## RUN THIS TO CREATE DAG ########
 # snakemake --cores 4 --dag 2>/dev/null | grep -v "Including" | dot -Tpdf > dag.pdf
@@ -17,13 +19,19 @@ ssp_scenarios = ['historical','ssp126','ssp245','ssp370','ssp585']
 branches = config["branches"]
 
 # Locate all WORK directories 
-SSPRCP_MAIN_DIR = Path(workflow.basedir).resolve()  # Snakefile directory
-ROOT_DIR = SSPRCP_MAIN_DIR.parents[1]              # go up 1 levels to chuang_lab_tmu
+SSPRCP_MAIN_DIR = Path(workflow.basedir).resolve()
+SSPRCP_ROOT_DIR = SSPRCP_MAIN_DIR.parents[1]
 SCRIPTS_DIR = SSPRCP_MAIN_DIR / "scripts"
 
-# Locate data directories
-WORK_DIR = ROOT_DIR / "work"
-SSPRCP_WORK_DIR = WORK_DIR / "ssp_rcp"
+
+ruleorder:
+    GWL_convert_and_merge_across_years > GWL_merge_across_models
+
+###############################################################################
+# Directories
+###############################################################################
+
+SSPRCP_WORK_DIR = SSPRCP_ROOT_DIR / "work"
 DATA_DIR = SSPRCP_WORK_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
 INTERIM_DIR = DATA_DIR / "interim"
@@ -40,11 +48,8 @@ TREAD_NETCDF_DIR = NETCDF_DIR / "TREAD_NetCDF"
 
 FIGURES_DIR = SSPRCP_WORK_DIR / "figures"
 
-# List of all directories you want to create
+# Create directories
 dirs_to_create = [
-    WORK_DIR,
-    SSPRCP_WORK_DIR,
-    DATA_DIR,
     RAW_DIR,
     INTERIM_DIR,
     AR6_INTERIM_DIR,
@@ -58,18 +63,105 @@ dirs_to_create = [
     TREAD_NETCDF_DIR,
     FIGURES_DIR
 ]
-
 for directory in dirs_to_create:
     directory.mkdir(parents=True, exist_ok=True)
 
+###############################################################################
+# Rule all: final targets
+###############################################################################
+rule all:
+    input:
+        expand(
+            GWL_NETCDF_DIR / "{clim_factor}" / "{gwl}.nc",
+            clim_factor=CLIM_FACTORS,
+            gwl=lambda wc: GWL_BY_FACTOR[wc.clim_factor],
+        ),
+        GWL_NETCDF_DIR / "gwl_all_sliced.nc",
+        GWL_NETCDF_DIR / "gwl_all_sliced.tsv"
 
 
+###############################################################################
+# Include branch rules
+###############################################################################
 for branch in branches:
     print(f"Including rules for branch: {branch}")
     include: f"rules/{branch}.smk"
 
-rule all:
+###############################################################################
+# Rule: Merge CSVs → One NetCDF per (clim_factor, gwl)
+###############################################################################
+CLIM_FACTORS = [p.name for p in GWL_RAW_DIR.iterdir() if p.is_dir()]
+
+GWL_BY_FACTOR = {
+    cf: [p.name for p in (GWL_RAW_DIR / cf).iterdir() if p.is_dir()]
+    for cf in CLIM_FACTORS
+}
+
+
+rule GWL_convert_and_merge_across_years:
     input:
-        expand(str(NETCDF_DIR) + "/{branch}_NetCDF/{branch}_all.nc", branch=branches),
-        expand(str(NETCDF_DIR) + "/{branch}_NetCDF/{branch}_sliced.nc", branch=branches),
-        expand(str(NETCDF_DIR) + "/{branch}_NetCDF/{branch}_sliced.tsv", branch=branches)
+        GWL_RAW_DIR / "{clim_factor}" / "{gwl}"
+    output:
+        GWL_NETCDF_DIR / "{clim_factor}" / "{gwl}.nc"
+    conda:
+        SSPRCP_MAIN_DIR / "envs/environment.yaml"
+    script:
+        "GWL_convert_and_merge_across_years.py"
+
+###############################################################################
+# Rule: Combine all GWL NetCDFs for each climate factor
+###############################################################################
+
+rule GWL_merge_across_models:
+    input:
+        lambda w: list(sorted((GWL_NETCDF_DIR / w.clim_factor).glob("*.nc")))
+    output:
+        GWL_NETCDF_DIR / "combined_{clim_factor}.nc"
+    conda:
+        SSPRCP_MAIN_DIR / "envs/environment.yaml"
+    script:
+        SCRIPTS_DIR / "GWL_merge_across_models.py"
+
+###############################################################################
+# Rule: Merge all climate factors into a single gwl_all.nc
+###############################################################################
+
+rule GWL_merge_across_climate_factors:
+    input:
+        expand(GWL_NETCDF_DIR / "combined_{clim_factor}.nc", clim_factor=ar6_clim_factors)
+    output:
+        NETCDF_DIR / "gwl_all.nc"
+    conda:
+        SSPRCP_MAIN_DIR / "envs/environment.yaml"
+    script:
+        SCRIPTS_DIR / "GWL_merge_across_climate_factors.py"
+
+
+###############################################################################
+# Rule: Slice GWL all.nc depending on provided configuration
+###############################################################################
+
+rule GWL_slice_gwl_all_netcdf:
+    input:
+        NETCDF_DIR / "gwl_all.nc"
+    output:
+        GWL_NETCDF_DIR / "gwl_all_sliced.nc"
+    conda:
+        SSPRCP_MAIN_DIR / "envs/environment.yaml"
+    script:
+        SCRIPTS_DIR / "GWL_slice_gwl_all_netcdf.py"
+
+
+###############################################################################
+# Rule: Convert sliced NetCDF to TSV
+###############################################################################
+rule GWL_netcdf_slice_to_tsv:
+    input:
+        GWL_NETCDF_DIR / "gwl_all_sliced.nc"
+    output:
+        GWL_NETCDF_DIR / "gwl_all_sliced.tsv"
+    conda:
+        SSPRCP_MAIN_DIR / "envs/environment.yaml"
+    script:
+        SCRIPTS_DIR / "GWL_netcdf_slice_to_tsv.py"
+
