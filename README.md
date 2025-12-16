@@ -1,20 +1,28 @@
 # Chuang Lab @ Taipei Medical University, Department of Molecular Parasitology and Tropical Diseases
 
-We focus on large scale geospatial data analysis alongside temporal epidemiological data to investigate how climate change impacts the incidence of tropical diseases and more specifically vector-borne illnesses like dengue.
+We focus on modelling the relationship between dengue fever epidemiology and climate change by analyzing geospatial data, infectious reports text data, government recorded infection cases, and Shared Socioeconomic Pathways models. We leverage both data analysis, machine learning, and deep learning methods to better capture how long term climate trends observed in the past might predict the spread of dengue fever spatiotemporally in the future.
 
-## Navigation
+The repository consists of four modules, each contributing to a part of the aforementioned ecosystem of data preprocessing, transformation, and eventual application in machine learning.
 
-The MAIN branch of the repo contains projects that are ongoing, and LEGACY contains projects that are inactive at the moment. While in the MAIN branch, please ensure your input (raw data) and output (graphs, tables, plots) are stored  separate from the code under the 'work' folder.
+Each module has a 'main' side where code resides and 'work' side where raw data, transformed data, or data visualisations resides. [Snakemake](https://snakemake.readthedocs.io/en/stable/) is used for data provenance tracking.
 
+The dataflow of a fully realized pipeline would combine outputs from module (A), (B), (C) as well as government-recorded dengue fever cases to create models with module (D). 
 
-## Active List of Projects
+## Active Modules
 
-* Dengue Fever Prediction in Indonesia
-* Dengue Fever Prediction in Tainan City, Taiwan
+(A) Historical Climate Data Module
 * Zonal Statistics via Google Earth Engine
-* Bibliometric Epidemiology Analysis of ProMED-Mail 
+* TCCIP Historical Downscaling Climate Data
+
+(B) Future Climate Predictive Data Module
+* IAMC/IPCC Shared Socioeconomic Pathways Models
+* TCCIP () Shared Socioeconomic Pathways Models
+
+(C) Dengue Fever Infectious Reports Natural Language Processing Module
+
+(D) Dengue Fever Machine Learning Module
 
 
-## Legacy Projects
+## Legacy Projects / Collaborations
 
 * Impact of Weather Condition on Vehicular Accidents in Taiwan
