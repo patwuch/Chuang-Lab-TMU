@@ -13,6 +13,7 @@ gee_dengue_ml/work
 # Snakemake
 .snakemake/
 **/.snakemake/
+ssp_rcp/main/.snakemake/
 
 # Conda / environments
 conda/
