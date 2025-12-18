@@ -36,12 +36,12 @@ rule TREAD_merge_across_clim_factors:
     conda:
         SSPRCP_MAIN_DIR / "envs/environment.yaml"
     script:
-        SCRIPTS_DIR / "TREAD_merge_across_clim_factors.py"
+        SCRIPTS_DIR / "merge_across_clim_factors.py"
 
 
-###############################################################################
+##############################################################################
 # Rule: Slice TREAD all.nc depending on provided configuration
-###############################################################################
+##############################################################################
 
 rule TREAD_get_slice_netcdf:
     input:

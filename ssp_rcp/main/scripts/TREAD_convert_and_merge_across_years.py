@@ -1,73 +1,61 @@
 import pandas as pd
 import numpy as np
-import xarray as xr
+from netCDF4 import Dataset, date2num
 from pathlib import Path
 
 csv_files = snakemake.input
-
-if not csv_files:
-    raise ValueError(f"No CSV files found for {snakemake.wildcards.clim_factor}")
-
 out_path = snakemake.output[0]
 Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
 first = True
 
+# Choose a reference date earlier than your earliest data
+time_units = "days since 1850-01-01 00:00:00"
+
 for f in csv_files:
-    print("Reading:", f)
     df = pd.read_csv(f)
+    print(f"Processing file: {f}")
     df.columns = df.columns.str.strip()
-
-    if df.empty:
-        raise ValueError(f"Empty CSV: {f}")
-
-    if df.columns.duplicated().any():
-        raise ValueError(f"Duplicate columns in {f}")
-
-    time_cols = [c for c in df.columns if c not in ["LON", "LAT"] and c.isdigit()]
-    valid_time_cols = []
-    for c in time_cols:
-        try:
-            pd.to_datetime(c, format="%Y%m%d")
-            valid_time_cols.append(c)
-        except ValueError:
-            print(f"Skipping invalid date column: {c}")
-
+    time_cols = [c for c in df.columns if c not in ["LON", "LAT"]]
+    valid_time_cols = [c for c in time_cols if c.isdigit()]
+    if not valid_time_cols:
+        continue
     times = pd.to_datetime(valid_time_cols, format="%Y%m%d")
 
-    lon = np.sort(df["LON"].unique())
     lat = np.sort(df["LAT"].unique())
-
-    data = np.full(
-        (len(times), len(lat), len(lon)),
-        np.nan,
-        dtype=np.float32,  # optional but strongly recommended
-    )
-
+    lon = np.sort(df["LON"].unique())
+    data = np.full((len(times), len(lat), len(lon)), np.nan, dtype=np.float32)
     for i, tcol in enumerate(valid_time_cols):
-        grid = df.pivot_table(values=tcol, index="LAT", columns="LON")
-        grid = grid.reindex(index=lat, columns=lon)
+        grid = df.pivot_table(values=tcol, index="LAT", columns="LON").reindex(index=lat, columns=lon)
         data[i] = grid.values
 
-    parts = Path(f).name.split("_")
-    year = parts[-1].split(".")[0]
+    # Convert times to numeric values (days since reference)
+    times_num = date2num(times.to_pydatetime(), units=time_units)
 
-    da = xr.DataArray(
-        data,
-        dims=("time", "lat", "lon"),
-        coords={"time": times, "lat": lat, "lon": lon},
-        name=snakemake.wildcards.clim_factor,
-        attrs={"year": year},
-    )
+    if first:
+        # Create file and define dimensions
+        nc = Dataset(out_path, 'w', format='NETCDF4')
+        nc.createDimension('time', None)  # unlimited
+        nc.createDimension('lat', len(lat))
+        nc.createDimension('lon', len(lon))
 
-    ds = da.to_dataset()
+        times_var = nc.createVariable('time', 'f8', ('time',))
+        times_var.units = time_units
+        lat_var = nc.createVariable('lat', 'f4', ('lat',))
+        lon_var = nc.createVariable('lon', 'f4', ('lon',))
+        data_var = nc.createVariable(snakemake.wildcards.clim_factor, 'f4', ('time', 'lat', 'lon'), zlib=True)
 
-    ds.to_netcdf(
-    out_path,
-    mode="a" if not first else "w",
-    unlimited_dims=["time"],
-    engine="netcdf4",
-)
+        lat_var[:] = lat
+        lon_var[:] = lon
+        times_var[:] = times_num
+        data_var[:] = data
 
+        first = False
+    else:
+        # Append along time
+        nc = Dataset(out_path, 'a')
+        t_len = len(nc.dimensions['time'])
+        nc.variables['time'][t_len:t_len+len(times)] = times_num
+        nc.variables[snakemake.wildcards.clim_factor][t_len:t_len+len(times), :, :] = data
 
-print("Finished writing:", out_path)
+    nc.close()

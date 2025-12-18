@@ -4,6 +4,10 @@ from pathlib import Path
 
 # Use Snakemake variables
 ds = xr.open_dataset(snakemake.input[0])
+print(ds.time.min().values, ds.time.max().values)
+print(ds.time)
+print(ds.time.dtype)
+print(ds.time.attrs)
 
 # Load config parameters
 start_date = pd.to_datetime(snakemake.config["start_date"])
@@ -14,6 +18,11 @@ exclude_models = snakemake.config.get("exclude_models", [])
 
 # Temporal slicing
 ds_sliced = ds.sel(time=slice(start_date, end_date))
+
+print(ds_sliced.time)
+print(ds_sliced.time.dtype)
+print(ds_sliced.time.min().values, ds_sliced.time.max().values)
+
 
 # Spatial resolution
 if spatial_resolution == "1deg":
