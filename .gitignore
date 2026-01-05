@@ -1,4 +1,4 @@
-# Ignore all work folders
+# Ignore all work folders (folders containing data)
 
 *.log
 *.tmp
@@ -10,14 +10,17 @@ zonal-statistics-module/work
 dengue-infection-module/work
 machine-learning-module/work
 
+# Ignore legacy projects
+others/
+
 # Snakemake
 .snakemake/
 **/.snakemake/
 climate-projection-module/main/.snakemake/
-dengue-infection-module/work
-zonal-statistics-module/work
-machine-learning-module/work
-others/
+dengue-infection-module/main/.snakemake/
+zonal-statistics-module/main/.snakemake/
+machine-learning-module/main/.snakemake/
+
 
 # Conda / environments
 conda/
