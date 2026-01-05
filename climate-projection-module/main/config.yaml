@@ -1,0 +1,14 @@
+branches:
+  # - GWL
+  - AR6
+  # - TREAD
+
+# Slicing date range
+# Please make sure the date range is within the data availability of the selected dataset
+start_date: 2018-01-01
+end_date: 2018-01-01
+
+# Slicing configuration:
+spatial_resolution: "pinpoint"  # "1deg"
+temporal_resolution: "daily" # "weekly"
+exclude_models:

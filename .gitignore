@@ -5,15 +5,19 @@
 *.csv
 *.sav
 *.nc
-ssp_rcp/work
-zonaL_statistics/work
-promedscrape/work
-gee_dengue_ml/work
+climate-projection-module/work
+zonal-statistics-module/work
+dengue-infection-module/work
+machine-learning-module/work
 
 # Snakemake
 .snakemake/
 **/.snakemake/
-ssp_rcp/main/.snakemake/
+climate-projection-module/main/.snakemake/
+dengue-infection-module/work
+zonal-statistics-module/work
+machine-learning-module/work
+others/
 
 # Conda / environments
 conda/
