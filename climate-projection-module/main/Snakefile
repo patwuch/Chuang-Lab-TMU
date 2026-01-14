@@ -14,7 +14,7 @@ import os
 configfile: "config.yaml"
 
 ar6_clim_factors = ['prec','temp_min','temp_max','temp_avg']
-tread_clim_factors = ['prec','temp_min','temp_max','rel_humid','wind_spd','sun']
+tread_clim_factors = ['prec','temp_min','temp_max','rel_humid','wind_spd']
 gwl_scenarios = ['GWL1.5','GWL2.0','GWL3.0','GWL4.0']
 ssp_scenarios = ['historical','ssp126','ssp245','ssp370','ssp585']
 branches = config["branches"]

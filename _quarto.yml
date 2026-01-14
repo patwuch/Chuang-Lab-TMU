@@ -1,0 +1,19 @@
+project:
+  type: website
+
+website:
+  title: "Chuang Lab TMU"
+  description: "Chuang Lab TMU"
+  favicon: "images/tmu-logo.png"
+  navbar:
+    left:
+      - text: "Home"
+        href: index.qmd
+      - text: "Dengue Infection Data Module"
+        href: module1/docs/index.qmd
+      - text: "Shared Socioeconomic Pathways Module"
+        href: module2/docs/index.qmd
+      - text: "Zonal Statistics Earth Observation Module"
+        href: module3/docs/index.qmd
+      - text: "Machine Learning Epidemiology Prediction Module"
+        href: module4/docs/index.qmd

@@ -1,0 +1,14 @@
+from pathlib import Path
+import glob
+import pandas as pd
+import numpy as np
+from collections import defaultdict
+from snakemake.io import directory
+import os
+
+######## RUN THIS TO CREATE DAG ########
+# snakemake --cores 4 --dag 2>/dev/null | grep -v "Including" | dot -Tpdf > dag.pdf
+########################################
+
+
+configfile: "config.yaml"

@@ -26,3 +26,6 @@ machine-learning-module/main/.snakemake/
 conda/
 .env/
 venv/
+
+/.quarto/
+**/*.quarto_ipynb
